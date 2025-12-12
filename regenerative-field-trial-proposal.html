@@ -1,0 +1,2349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Regenerative Row Cropping - Proposal</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="error-handler.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: "Georgia", "Times New Roman", serif;
+        background: #e8e8e8;
+        padding: 20px;
+        padding-left: 280px;
+        line-height: 1.5;
+        color: #333;
+        font-size: 10pt;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Sidebar Navigation */
+      .sidebar-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 260px;
+        height: 100vh;
+        background: #1a252f;
+        color: #ecf0f1;
+        overflow-y: auto;
+        z-index: 1000;
+        padding: 20px 0;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+      }
+
+      .sidebar-nav h3 {
+        color: #27ae60;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        padding: 15px 20px 8px;
+        margin: 0;
+        border-bottom: none;
+      }
+
+      .sidebar-nav .nav-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        padding: 15px 20px;
+        border-bottom: 1px solid #34495e;
+        margin-bottom: 10px;
+      }
+
+      .sidebar-nav a {
+        display: block;
+        color: #bdc3c7;
+        text-decoration: none;
+        padding: 10px 20px;
+        font-size: 13px;
+        transition: all 0.2s ease;
+        border-left: 3px solid transparent;
+      }
+
+      .sidebar-nav a:hover {
+        background: #2c3e50;
+        color: #fff;
+        border-left-color: #27ae60;
+      }
+
+      .sidebar-nav a.active {
+        background: #2c3e50;
+        color: #27ae60;
+        border-left-color: #27ae60;
+      }
+
+      .sidebar-nav .nav-section {
+        margin-bottom: 5px;
+      }
+
+      .sidebar-nav .nav-subsection {
+        padding-left: 35px;
+        font-size: 12px;
+      }
+
+      @media print {
+        .sidebar-nav {
+          display: none;
+        }
+        body {
+          padding-left: 20px;
+        }
+      }
+
+      @page {
+        size: letter;
+        margin: 0.5in;
+      }
+
+      .pdf-export-btn {
+        position: fixed;
+        top: 20px;
+        left: 270px;
+        z-index: 2000;
+        width: 44px;
+        height: 44px;
+        background: #f4f6f8;
+        color: #34495e;
+        border: none;
+        padding: 0;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 20px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+        transition: background 0.2s ease, transform 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .pdf-export-btn:hover {
+        background: #e7ebf0;
+        transform: translateY(-1px);
+      }
+
+      .pdf-export-btn:active {
+        transform: scale(0.96);
+      }
+
+      .pdf-export-btn.exporting {
+        background: #dfe3e7;
+        cursor: wait;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .page {
+        width: 8.5in;
+        min-height: 11in;
+        padding: 0.5in 0.5in 0.75in 0.5in;
+        margin: 0 auto 20px;
+        background: white;
+        position: relative;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.15);
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .page-content {
+        max-height: 9.5in; /* Safe content area for PDF export */
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+
+      .page#cover {
+        height: 11in;
+        min-height: 11in;
+        max-height: 11in;
+        overflow: hidden;
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .page#cover .page-content {
+        height: 100%;
+      }
+
+      .page#toc {
+        min-height: 11in;
+      }
+
+      .page#toc h1 {
+        margin-bottom: 15pt;
+        text-align: center;
+      }
+
+      h2 {
+        font-size: 14pt;
+        margin-bottom: 8pt;
+        margin-top: 0;
+      }
+
+      h3 {
+        font-size: 11pt;
+        margin-bottom: 6pt;
+        margin-top: 10pt;
+      }
+
+      h4 {
+        font-size: 10pt;
+        margin-bottom: 4pt;
+      }
+
+      p {
+        font-size: 9pt;
+        line-height: 1.4;
+        margin-bottom: 6pt;
+      }
+
+      li {
+        font-size: 9pt;
+        line-height: 1.3;
+      }
+
+      .page-number {
+        position: absolute;
+        bottom: 0.3in;
+        right: 0.5in;
+        font-size: 9pt;
+        color: #999;
+      }
+
+      @media print {
+        body {
+          background: white;
+          padding: 0;
+        }
+        .page {
+          margin: 0;
+          box-shadow: none;
+          width: 8.5in;
+          min-height: 11in;
+          height: auto;
+          max-height: none;
+          overflow: visible;
+          page-break-after: always;
+          break-after: page;
+        }
+        .page#cover {
+          page-break-after: always;
+          break-after: page;
+          height: 11in;
+        }
+        .page#toc {
+          page-break-after: always;
+          break-after: page;
+          height: auto;
+          min-height: 11in;
+        }
+        .page:not(#cover):not(#toc) {
+          page-break-after: auto;
+          break-after: auto;
+          height: auto;
+          min-height: 11in;
+          max-height: none;
+        }
+        .page:last-of-type {
+          page-break-after: auto;
+          break-after: auto;
+          min-height: auto;
+        }
+        h2 {
+          page-break-before: always;
+          break-before: page;
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .page > h2:first-child {
+          page-break-before: auto;
+          break-before: auto;
+        }
+        .toc-item {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        p, li {
+          orphans: 2;
+          widows: 2;
+        }
+        p {
+          page-break-inside: auto;
+          break-inside: auto;
+        }
+        li {
+          page-break-inside: auto;
+          break-inside: auto;
+        }
+        h2, h3 {
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .pdf-export-btn,
+        .floating-toc,
+        .search-toolbar,
+        .search-shell,
+        .search-toggle {
+          display: none;
+        }
+      }
+
+      h1 {
+        font-size: 24pt;
+        text-align: center;
+        margin-bottom: 10pt;
+        color: #2c3e50;
+        page-break-after: avoid;
+      }
+
+      h2 {
+        font-size: 16pt;
+        margin-top: 0;
+        margin-bottom: 10pt;
+        padding-top: 12pt;
+        color: #34495e;
+        border-bottom: 2px solid #27ae60;
+        padding-bottom: 4pt;
+        page-break-before: always;
+        page-break-after: avoid;
+        break-before: page;
+        break-after: avoid;
+        orphans: 2;
+        widows: 2;
+      }
+
+      .page > h2:first-child {
+        page-break-before: auto;
+        break-before: auto;
+        padding-top: 0;
+      }
+
+      h3 {
+        font-size: 12pt;
+        margin-top: 12pt;
+        margin-bottom: 6pt;
+        color: #2c3e50;
+        page-break-before: avoid;
+        page-break-after: avoid;
+        break-before: avoid;
+        break-after: avoid;
+        orphans: 2;
+        widows: 2;
+      }
+
+      h4 {
+        font-size: 10pt;
+        margin-top: 10pt;
+        margin-bottom: 4pt;
+        color: #34495e;
+        page-break-before: avoid;
+        page-break-after: avoid;
+        break-before: avoid;
+        break-after: avoid;
+        orphans: 2;
+        widows: 2;
+      }
+
+      .cover-page {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 9in;
+      }
+
+      .logo-container {
+        margin-bottom: 30pt;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .logo {
+        max-width: 200px;
+        max-height: 200px;
+        width: auto;
+        height: auto;
+      }
+
+      .cover-title {
+        font-size: 34pt;
+        font-weight: 700;
+        margin-bottom: 25pt;
+        color: #1a252f;
+        letter-spacing: 1pt;
+        line-height: 1.5;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        font-style: normal;
+        text-transform: none;
+      }
+
+      .cover-subtitle {
+        font-size: 18pt;
+        margin-bottom: 30pt;
+        color: #7f8c8d;
+      }
+
+      .cover-info {
+        font-size: 12pt;
+        margin-top: 40pt;
+        color: #7f8c8d;
+      }
+
+      .toc {
+        margin-top: 15pt;
+        font-size: 10pt;
+        page-break-inside: auto;
+      }
+
+      .toc-item {
+        font-size: 9pt;
+        line-height: 1.5;
+        padding: 4pt 0;
+      }
+
+      .toc-item a {
+        color: #2c3e50;
+        text-decoration: none;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .toc-item a:hover {
+        color: #27ae60;
+      }
+
+      .toc-item a span {
+        color: #7f8c8d;
+        font-weight: 400;
+        min-width: 18pt;
+        text-align: right;
+      }
+
+      .toc-subitem {
+        margin-left: 12pt;
+        margin-top: 2pt;
+        margin-bottom: 2pt;
+        font-size: 8pt;
+        line-height: 1.4;
+        padding: 1pt 0;
+      }
+
+      .toc-subitem a {
+        color: #666;
+        text-decoration: none;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .toc-subitem a:hover {
+        color: #27ae60;
+      }
+
+      .toc-subitem a span {
+        color: #999;
+        font-weight: 400;
+        min-width: 18pt;
+        text-align: right;
+      }
+
+      p {
+        margin: 6pt 0;
+        text-align: justify;
+        font-size: 10pt;
+        orphans: 2;
+        widows: 2;
+      }
+
+      ul {
+        margin: 6pt 0;
+        margin-left: 20pt;
+        orphans: 2;
+        widows: 2;
+      }
+
+      li {
+        margin: 3pt 0;
+        font-size: 10pt;
+        page-break-inside: auto;
+        break-inside: auto;
+      }
+
+      .section-divider {
+        border-top: 1px solid #ecf0f1;
+        margin: 20pt 0;
+      }
+
+      .key-points {
+        background: #f0fdf4;
+        padding: 10pt 12pt;
+        margin: 10pt 0;
+        border-left: 3px solid #27ae60;
+      }
+
+      .key-points h4 {
+        margin-top: 0;
+        margin-bottom: 4pt;
+      }
+
+      .workflow-step {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border: 2px solid #e1e8ed;
+        border-radius: 8px;
+        padding: 12pt 15pt;
+        margin: 12pt 0;
+        position: relative;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .workflow-step::before {
+        content: counter(step-counter);
+        counter-increment: step-counter;
+        position: absolute;
+        left: -15px;
+        top: 12pt;
+        background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+        color: white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 12pt;
+        box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+      }
+
+      .workflow-container {
+        counter-reset: step-counter;
+        margin: 20pt 0;
+      }
+
+      .crop-type-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f0fff4 100%);
+        border: 2px solid #a3e4b7;
+        border-radius: 10px;
+        padding: 15pt;
+        margin: 12pt 0;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .crop-type-card h4 {
+        margin-top: 0;
+        margin-bottom: 10pt;
+        color: #2c3e50;
+        font-size: 13pt;
+        display: flex;
+        align-items: center;
+        gap: 10pt;
+      }
+
+      .crop-type-card .crop-icon {
+        font-size: 20pt;
+        color: #27ae60;
+        width: 32pt;
+        height: 32pt;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #e8f8f0 0%, #d0f0e0 100%);
+        border-radius: 8px;
+        border: 1px solid #a3e4b7;
+      }
+
+      .crop-type-card ul {
+        margin-left: 42pt;
+        margin-top: 8pt;
+      }
+
+      .info-box {
+        background: linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%);
+        border-left: 3px solid #f39c12;
+        border-radius: 4px;
+        padding: 8pt 10pt;
+        margin: 8pt 0;
+        font-size: 9pt;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .info-box.primary {
+        background: linear-gradient(135deg, #e8f8f0 0%, #d4f1e4 100%);
+        border-left-color: #27ae60;
+      }
+
+      .info-box.success {
+        background: linear-gradient(135deg, #eafaf1 0%, #d5f4e6 100%);
+        border-left-color: #27ae60;
+      }
+
+      .section-box {
+        background: #ffffff;
+        border: 2px solid #e1e8ed;
+        border-radius: 10px;
+        padding: 18pt;
+        margin: 20pt 0;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+      }
+
+      .section-box h3 {
+        margin-top: 0;
+        color: #2c3e50;
+        border-bottom: 2px solid #27ae60;
+        padding-bottom: 8pt;
+        margin-bottom: 15pt;
+      }
+
+      .section-box h4 {
+        color: #34495e;
+        margin-top: 15pt;
+        margin-bottom: 10pt;
+      }
+
+      .highlight-text {
+        background: linear-gradient(120deg, #d4edda 0%, #c3e6cb 100%);
+        padding: 2pt 6pt;
+        border-radius: 4px;
+        font-weight: 600;
+        color: #155724;
+      }
+
+      .lead-source-item {
+        background: #f8f9fa;
+        border-left: 3px solid #27ae60;
+        padding: 10pt 12pt;
+        margin: 8pt 0;
+        border-radius: 4px;
+        page-break-inside: avoid;
+      }
+
+      .lead-source-item strong {
+        color: #2c3e50;
+        display: block;
+        margin-bottom: 4pt;
+        font-size: 11.5pt;
+      }
+
+      .lead-source-item ul {
+        margin-left: 20pt;
+        margin-top: 6pt;
+      }
+
+      ul.enhanced-list {
+        list-style: none;
+        margin-left: 0;
+        padding-left: 0;
+      }
+
+      ul.enhanced-list li {
+        padding-left: 25pt;
+        position: relative;
+        margin: 8pt 0;
+      }
+
+      ul.enhanced-list li::before {
+        content: "▸";
+        position: absolute;
+        left: 8pt;
+        color: #27ae60;
+        font-weight: bold;
+        font-size: 14pt;
+      }
+
+      .visual-separator {
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, #27ae60 50%, transparent 100%);
+        margin: 20pt 0;
+        border: none;
+      }
+
+      h3 strong, h4 strong {
+        color: #2c3e50;
+        font-weight: 700;
+      }
+
+      p.important {
+        background: #f8f9fa;
+        padding: 12pt;
+        border-left: 4px solid #27ae60;
+        border-radius: 4px;
+        margin: 15pt 0;
+        font-weight: 500;
+      }
+
+      code {
+        background: #f4f4f4;
+        padding: 2pt 6pt;
+        border-radius: 3pt;
+        font-family: "Courier New", monospace;
+        font-size: 10pt;
+      }
+
+      img {
+        max-width: 100%;
+        height: auto;
+        page-break-inside: avoid;
+        margin: 8pt 0;
+      }
+
+      .image-container {
+        text-align: center;
+        margin: 10pt 0;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .image-container img {
+        max-width: 100%;
+        max-height: 2.5in;
+        width: auto;
+        height: auto;
+        border-radius: 4px;
+        object-fit: contain;
+      }
+
+      .image-caption {
+        font-size: 9pt;
+        color: #666;
+        margin-top: 6pt;
+        font-style: italic;
+      }
+
+      .image-container.full-page-image {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+      }
+
+      .image-container:not(.full-page-image) {
+        background: #f7f9fc;
+        border: 1px solid #e1e8f2;
+        border-radius: 8px;
+        padding: 8pt;
+      }
+
+      .image-container img {
+        display: block;
+        margin: 0 auto;
+      }
+
+      .product-image {
+        max-width: 100%;
+        margin: 0;
+        display: block;
+        text-align: center;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .product-image img {
+        width: 100%;
+        height: auto;
+        border-radius: 4px;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e1e8ed;
+        display: block;
+      }
+
+      .product-image .image-caption {
+        margin-top: 6pt;
+        font-size: 8.5pt;
+        color: #7f8c8d;
+        line-height: 1.3;
+      }
+
+      .full-page-image {
+        max-width: 7.5in;
+        margin: 15pt auto 10pt;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        text-align: center;
+      }
+
+      .full-page-image img {
+        width: 100%;
+        height: auto;
+        max-height: 6in;
+        object-fit: contain;
+        border: 1px solid #e1e8ed;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      /* Smaller inline images */
+      .image-small img {
+        max-height: 2.5in;
+      }
+
+      .image-medium img {
+        max-height: 3in;
+      }
+
+      /* Data table styling */
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12pt 0;
+        font-size: 9pt;
+        page-break-inside: avoid;
+      }
+
+      .data-table th {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 10pt 8pt;
+        text-align: left;
+        font-weight: 600;
+        font-size: 9pt;
+      }
+
+      .data-table td {
+        padding: 8pt;
+        border-bottom: 1px solid #e0e0e0;
+        vertical-align: top;
+      }
+
+      .data-table tr:nth-child(even) {
+        background: #f8f9fa;
+      }
+
+      .data-table tr:hover {
+        background: #e8f8f0;
+      }
+
+      /* Year grid */
+      .year-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8pt;
+        margin: 12pt 0;
+      }
+
+      .year-box {
+        background: linear-gradient(135deg, #f8faf9 0%, #e8f5e9 100%);
+        border: 1px solid #c8e6c9;
+        border-radius: 6px;
+        padding: 8pt;
+        text-align: center;
+      }
+
+      .year-box .year {
+        font-weight: 700;
+        color: #1a3d2e;
+        font-size: 9pt;
+      }
+
+      .year-box .amount {
+        font-size: 14pt;
+        color: #27ae60;
+        font-weight: 600;
+      }
+
+      .year-box .unit {
+        font-size: 7pt;
+        color: #666;
+      }
+
+      /* Timeline bar */
+      .timeline-bar {
+        display: flex;
+        height: 30pt;
+        border-radius: 6px;
+        overflow: hidden;
+        margin: 10pt 0;
+      }
+
+      .timeline-segment {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 8pt;
+        font-weight: 600;
+      }
+
+      .timeline-segment.hemp {
+        background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+      }
+
+      .timeline-segment.summer {
+        background: linear-gradient(135deg, #f39c12 0%, #d68910 100%);
+      }
+
+      .timeline-segment.fall {
+        background: linear-gradient(135deg, #795548 0%, #5d4037 100%);
+      }
+
+      /* Two column layout */
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15pt;
+      }
+
+      /* Metric cards */
+      .metric-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 10pt;
+        text-align: center;
+        page-break-inside: avoid;
+      }
+
+      .metric-card .value {
+        font-size: 18pt;
+        font-weight: 700;
+        color: #27ae60;
+      }
+
+      .metric-card .label {
+        font-size: 8pt;
+        color: #666;
+        margin-top: 4pt;
+      }
+
+      /* Treatment cards */
+      .treatment-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8faf9 100%);
+        border: 1px solid #c8e6c9;
+        border-radius: 6px;
+        padding: 6pt 8pt;
+        margin: 4pt 0;
+        page-break-inside: avoid;
+      }
+
+      .treatment-card h4 {
+        margin-top: 0;
+        margin-bottom: 2pt;
+        color: #1a3d2e;
+        font-size: 9pt;
+        display: flex;
+        align-items: center;
+        gap: 4pt;
+      }
+
+      .treatment-card p {
+        margin: 0;
+        font-size: 8pt;
+      }
+
+      .treatment-card .icon {
+        width: 18pt;
+        height: 18pt;
+        background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 9pt;
+        font-weight: bold;
+      }
+
+      /* Field map */
+      .field-map {
+        background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+        border: 2px solid #27ae60;
+        border-radius: 10px;
+        padding: 15pt;
+        margin: 15pt 0;
+      }
+
+      .field-map-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8pt;
+        margin-top: 10pt;
+      }
+
+      .field-block {
+        background: white;
+        border: 2px solid #81c784;
+        border-radius: 6px;
+        padding: 10pt;
+        text-align: center;
+      }
+
+      .field-block.research {
+        background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+        border-color: #fbc02d;
+      }
+
+      .field-block .label {
+        font-weight: 700;
+        color: #1a3d2e;
+        font-size: 10pt;
+      }
+
+      .field-block .size {
+        font-size: 8pt;
+        color: #666;
+      }
+
+      /* Rotation cards */
+      .rotation-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f0f7f4 100%);
+        border: 1px solid #a5d6a7;
+        border-radius: 6px;
+        padding: 8pt 10pt;
+        margin: 6pt 0;
+        page-break-inside: avoid;
+      }
+
+      .rotation-card h4 {
+        margin-top: 0;
+        margin-bottom: 4pt;
+        padding-bottom: 4pt;
+        border-bottom: 1px solid #27ae60;
+        color: #1a3d2e;
+        font-size: 10pt;
+      }
+
+      .rotation-card p {
+        margin: 4pt 0;
+      }
+
+      .rotation-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6pt;
+        margin-top: 8pt;
+      }
+
+      /* Formula box */
+      .formula-box {
+        background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+        border: 2px dashed #bdbdbd;
+        border-radius: 8px;
+        padding: 12pt;
+        margin: 10pt 0;
+        font-family: "Courier New", monospace;
+        font-size: 9pt;
+      }
+
+      /* Checklist */
+      .checklist {
+        list-style: none;
+        margin-left: 0;
+        padding: 0;
+      }
+
+      .checklist li {
+        padding: 6pt 0 6pt 28pt;
+        position: relative;
+        border-bottom: 1px solid #f0f0f0;
+      }
+
+      .checklist li::before {
+        content: "\f00c";
+        font-family: "Font Awesome 6 Free";
+        font-weight: 900;
+        position: absolute;
+        left: 0;
+        font-size: 12pt;
+        color: #27ae60;
+      }
+
+      /* Image placeholder for missing images */
+      .image-placeholder {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        border: 2px dashed #27ae60;
+        border-radius: 10px;
+        padding: 30pt;
+        text-align: center;
+        margin: 15pt 0;
+        color: #2d5a45;
+      }
+
+      .image-placeholder i {
+        font-size: 40pt;
+        margin-bottom: 10pt;
+        display: block;
+        color: #27ae60;
+      }
+
+      .image-placeholder .placeholder-text {
+        font-size: 10pt;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar-nav">
+      <div class="nav-title">
+        <i class="fas fa-seedling" style="margin-right: 8px; color: #27ae60;"></i>
+        Research Proposal
+      </div>
+      <h3>Navigation</h3>
+      <a href="#cover">Cover Page</a>
+      <a href="#toc">Table of Contents</a>
+      <h3>Sections</h3>
+      <a href="#section1">1. Executive Summary</a>
+      <a href="#section2">2. Problem Statement</a>
+      <a href="#section3">3. Methods</a>
+      <a href="#section4">4. Crop Rotations</a>
+      <a href="#section5">5. Biological Inputs</a>
+      <a href="#section6">6. Monitoring</a>
+      <a href="#section7">7. Economic Evaluation</a>
+      <a href="#section8">8. Project Outcomes</a>
+      <a href="#section9">9. Extract Field Protocol</a>
+      <a href="#section10">10. Fungal Formulas</a>
+      <a href="#section11">11. Appendix</a>
+    </nav>
+
+    <!-- PDF Export Button -->
+    <button class="pdf-export-btn" onclick="enhancedPDFExport()" title="Export to PDF">
+      <i class="fas fa-file-pdf"></i>
+    </button>
+
+    <div class="container" id="document-content">
+
+      <!-- COVER PAGE -->
+      <div class="page" id="cover">
+        <div class="cover-page">
+          <div class="logo-container">
+            <img src="assets/logo/ssw-logo.png" alt="Soil Seed & Water Logo" class="logo" onerror="this.style.display='none'" />
+          </div>
+          <div style="font-size: 16pt; margin-bottom: 20pt; color: #7f8c8d">SOIL SEED & WATER</div>
+          <div class="cover-title">
+            Regenerative<br />
+            Row Cropping
+          </div>
+          <div class="cover-subtitle">University of Arizona Collaboration</div>
+          <div style="display: flex; justify-content: center; gap: 20pt; margin: 30pt 0;">
+            <div class="metric-card" style="min-width: 80pt;">
+              <div class="value">24</div>
+              <div class="label">ACRES</div>
+            </div>
+            <div class="metric-card" style="min-width: 80pt;">
+              <div class="value">5</div>
+              <div class="label">YEARS</div>
+            </div>
+            <div class="metric-card" style="min-width: 80pt;">
+              <div class="value">6</div>
+              <div class="label">TREATMENTS</div>
+            </div>
+          </div>
+          <div style="font-size: 12pt; margin-top: 20pt; color: #7f8c8d">
+            Complete Guide for Desert Southwest<br />
+            Regenerative Farming Systems
+          </div>
+          <div class="cover-info">
+            <strong>Prepared for:</strong> Caroline Kramer<br /><br />
+            Version 3.0<br />
+            December 2024
+          </div>
+          <div style="margin-top: 40pt; font-size: 9pt; color: #95a5a6; max-width: 6in; margin-left: auto; margin-right: auto">
+            This five-year field research program evaluates multiple soil-building strategies, biological amendments, and crop rotations to develop a scalable, profitable regenerative farming system for the desert Southwest.
+          </div>
+        </div>
+        <div class="page-number">1</div>
+      </div>
+
+      <!-- TABLE OF CONTENTS -->
+      <div class="page" id="toc">
+        <div class="page-content">
+          <h1>TABLE OF CONTENTS</h1>
+          <div class="toc" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6pt 40pt; margin-top: 15pt; font-size: 9pt">
+            <!-- Left Column -->
+            <div>
+              <div class="toc-item">
+                <a href="#section1"><strong>1. Executive Summary</strong> <span>3</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section2"><strong>2. Problem Statement / Rationale</strong> <span>4</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section3"><strong>3. Methods</strong> <span>5</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section3">3.1 Study Site <span>5</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section3">3.2 Soil Treatments <span>5</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section4"><strong>4. Crop Rotations</strong> <span>6</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section4">4.1 Industrial Hemp (Primary) <span>6</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section4">4.2 Summer Crops <span>6</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section4">4.3 Fall Crops <span>6</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section5"><strong>5. Biological Inputs</strong> <span>7</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section5">5.1 Compost Application Schedule <span>7</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section5">5.2 Gypsum Application <span>7</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section5">5.3 Fungal Extract Protocol <span>7</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section6"><strong>6. Soil Monitoring & Measurements</strong> <span>8</span></a>
+              </div>
+            </div>
+
+            <!-- Right Column -->
+            <div>
+              <div class="toc-item">
+                <a href="#section7"><strong>7. Economic Evaluation</strong> <span>10</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section8"><strong>8. Project Outcomes</strong> <span>11</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section8">8.1 Deliverables <span>11</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section8">8.2 Graphics Package <span>11</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section9"><strong>9. Desert Regenerative Extract Field Protocol</strong> <span>12</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section9">9.1 Application Rates (Year 1) <span>12</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section9">9.2 Field Totals <span>13</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section10"><strong>10. Fungal-Dominant Extract Formulas</strong> <span>14</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section10">10.1 Understanding F:B Ratios <span>14</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section10">10.2 SSW Formula Specifications <span>15</span></a>
+              </div>
+
+              <div class="toc-item">
+                <a href="#section11"><strong>11. Appendix</strong> <span>16</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section11">11.1 Field Checklist <span>16</span></a>
+              </div>
+              <div class="toc-subitem">
+                <a href="#section11">11.2 Mixing & Tank Charts <span>17</span></a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hero Image -->
+          <div class="image-container" style="margin-top: 25pt;">
+            <img src="assets/cover-desert-agriculture.png" alt="Desert Regenerative Agriculture" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-mountain\'></i><div style=\'font-weight: 600;\'>Desert Southwest Regenerative Agriculture</div><div class=\'placeholder-text\'>Run: npm run generate to create images</div></div>'" />
+            <div class="image-caption">24-Acre Research Site - Desert Southwest</div>
+          </div>
+        </div>
+        <div class="page-number">2</div>
+      </div>
+
+      <!-- SECTION 1: EXECUTIVE SUMMARY -->
+      <div class="page" id="section1">
+        <div class="page-content">
+          <h2><i class="fas fa-file-alt" style="margin-right: 8pt; color: #27ae60;"></i>1. EXECUTIVE SUMMARY</h2>
+
+          <p>This five-year field research program evaluates multiple soil-building strategies, biological amendments, and crop rotations to determine whether a <strong>scalable, profitable regenerative farming system</strong> can be developed for the desert Southwest. The project combines industrial hemp grown each January–June with rotations of grains and legumes to build soil fertility, increase carbon levels, strengthen fungal networks, reduce water demand, and support long-term farm resilience.</p>
+
+          <p>The study spans 24 acres, divided into four 6-acre blocks, with one block subdivided into 100' × 100' research plots for replicated university trials. Up to six soil profile treatments—including Green Waste Compost, Dairy Compost, Chicken/Dairy Compost, Desert Resilience Blend, Dairy–Green Waste Blend, and a Compost + Fungal Extract treatment—will be evaluated. An optional bare-soil control may also be included.</p>
+
+          <!-- 24-Acre Field Map Graphic -->
+          <div class="image-container" style="margin: 15pt 0; text-align: center;">
+            <img src="assets/field-map-24acre.png" alt="24-Acre Field Map" style="max-height: 2.5in; border-radius: 8pt;" />
+            <div class="image-caption">24-Acre Field Layout with UA Research Plots (100' × 100')</div>
+          </div>
+
+          <h3><i class="fas fa-vials" style="margin-right: 8pt; color: #27ae60;"></i>Six Soil Profile Treatments</h3>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6pt;">
+            <div class="treatment-card">
+              <h4><span class="icon">1</span> Green Waste Compost</h4>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">2</span> Dairy Compost</h4>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">3</span> Chicken/Dairy Compost</h4>
+              <p style="font-size: 8pt; color: #666;">10% Chicken + 90% Dairy</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">4</span> Desert Resilience Blend</h4>
+              <p style="font-size: 8pt; color: #666;">Biochar, zeolite, humic acids, worm castings, mineral fines</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">5</span> Dairy–Green Waste Blend</h4>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">6</span> Compost + Fungal Extract</h4>
+            </div>
+          </div>
+
+          <h3><i class="fas fa-chart-bar" style="margin-right: 8pt; color: #27ae60;"></i>Measurements Across All Treatments</h3>
+
+          <p style="font-size: 9pt;">Across all treatments, the research team will measure: <strong>soil carbon, fungal-to-bacterial ratios, infiltration, compaction, salinity, nutrient-holding capacity, irrigation use, crop performance,</strong> and <strong>economic viability</strong>. The study also compares the role of heavy equipment in industrial farming versus the reduced capital footprint of regenerative approaches.</p>
+
+          <div class="info-box primary">
+            <strong><i class="fas fa-bullseye" style="margin-right: 6pt;"></i> Final Outcome:</strong> A replicable model and transition guide for farmers seeking to move from conventional to regenerative systems while maintaining profitability and improving long-term soil health.
+          </div>
+        </div>
+        <div class="page-number">3</div>
+      </div>
+
+      <!-- SECTION 2: PROBLEM STATEMENT -->
+      <div class="page" id="section2">
+        <div class="page-content">
+          <h2><i class="fas fa-exclamation-triangle" style="margin-right: 8pt; color: #27ae60;"></i>2. PROBLEM STATEMENT / RATIONALE</h2>
+
+          <p>Agriculture in the desert Southwest faces worsening challenges: <strong>depleted soil carbon</strong>, <strong>compaction</strong>, <strong>salinity accumulation</strong>, <strong>rising fertilizer costs</strong>, <strong>water scarcity</strong>, and <strong>reduced resilience under heat</strong>. Industrial farming systems rely heavily on tillage, chemical fertilizers, herbicides, and large machinery. These practices increase costs and degrade soil biology, creating long-term economic and environmental vulnerabilities.</p>
+
+          <p>Regenerative systems—built upon <strong>compost</strong>, <strong>diverse plant exudates</strong>, <strong>mycorrhizal networks</strong>, <strong>legumes</strong>, <strong>reduced disturbance</strong>, and <strong>water-efficient soil structures</strong>—offer a promising alternative. Yet region-specific data for desert conditions is limited, and farmers require evidence-based guidance before shifting practices that affect their livelihoods.</p>
+
+          <p>This study addresses the need for: <strong>clear comparisons</strong> between soil blends, <strong>understanding</strong> of crop adaptability, <strong>insight</strong> into biological succession, <strong>realistic input cost modeling</strong>, and a <strong>transitional pathway</strong> from industrial to regenerative agriculture.</p>
+
+          <p>The goal is not only to identify <strong>what works</strong> but also to identify <strong>what does not</strong>, ensuring farmers avoid unproductive soil systems, unsuitable crops, or economically unfavorable strategies.</p>
+
+          <div class="two-col" style="margin: 16pt 0;">
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-sun"></i></span> Environmental Pressures</h4>
+              <ul style="margin-left: 15pt; font-size: 9pt;">
+                <li>Depleted soil carbon levels</li>
+                <li>Severe compaction issues</li>
+                <li>Salinity accumulation</li>
+                <li>Rising temperatures and heat stress</li>
+                <li>Water scarcity and drought</li>
+              </ul>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-dollar-sign"></i></span> Economic Pressures</h4>
+              <ul style="margin-left: 15pt; font-size: 9pt;">
+                <li>Rising fertilizer costs</li>
+                <li>Increased water expenses</li>
+                <li>Heavy equipment capital requirements</li>
+                <li>Reduced long-term yields</li>
+                <li>Soil degradation costs</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Image: Soil Health Comparison -->
+          <div class="image-container" style="margin-top: 12pt;">
+            <img src="assets/soil-health-comparison.png" alt="Soil Health Comparison" style="max-height: 2in;" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 15pt;\'><i class=\'fas fa-layer-group\'></i><div style=\'font-weight: 600;\'>Soil Health Comparison</div><div class=\'placeholder-text\'>Degraded vs. Healthy Regenerative Soil</div></div>'" />
+            <div class="image-caption">Comparison: Degraded industrial soil (left) vs. healthy regenerative soil (right)</div>
+          </div>
+        </div>
+        <div class="page-number">4</div>
+      </div>
+
+      <!-- SECTION 3: METHODS -->
+      <div class="page" id="section3">
+        <div class="page-content">
+          <h2><i class="fas fa-flask" style="margin-right: 8pt; color: #27ae60;"></i>3. METHODS</h2>
+
+          <h3><i class="fas fa-map-pin" style="margin-right: 8pt; color: #27ae60;"></i>3.1 Study Site</h3>
+
+          <div class="section-box" style="padding: 12pt;">
+            <div class="two-col">
+              <div>
+                <h4 style="margin-top: 0;"><i class="fas fa-location-dot" style="color: #27ae60; margin-right: 6pt;"></i> Location Details</h4>
+                <ul style="font-size: 9pt; margin: 0;">
+                  <li>24 acres located in an irrigated desert environment</li>
+                  <li>Divided into four 6-acre blocks</li>
+                  <li>One block subdivided into 100' × 100' plots for replicated trials</li>
+                </ul>
+              </div>
+              <div>
+                <h4 style="margin-top: 0;"><i class="fas fa-clipboard-check" style="color: #27ae60; margin-right: 6pt;"></i> Study Design</h4>
+                <ul style="font-size: 9pt; margin: 0;">
+                  <li>Randomized complete block design</li>
+                  <li>Treatments replicated in randomized blocks within UA research plots</li>
+                  <li>5-year longitudinal tracking</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <h3><i class="fas fa-layer-group" style="margin-right: 8pt; color: #27ae60;"></i>3.2 Soil Treatments (Client may choose 4 or all 6)</h3>
+
+          <div class="info-box success" style="margin-bottom: 10pt;">
+            <strong><i class="fas fa-info-circle" style="margin-right: 6pt;"></i> All treatments receive:</strong> 10 tons compost/acre + 1 ton gypsum/acre in Year 1
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8pt;">
+            <div class="treatment-card">
+              <h4><span class="icon">1</span> Green Waste Compost</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">High-carbon municipal green waste for fungal colonization</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">2</span> Dairy Compost</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">Nitrogen-rich dairy manure for bacterial activity</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">3</span> Chicken (10%) + Dairy Compost (90%)</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">Balanced NPK profile blend</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">4</span> Desert Resilience Blend</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">Compost-based with biochar, zeolite, humic acids, worm castings, mineral fines</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">5</span> Dairy + Green Waste Compost Blend</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">Combined dairy and green waste composts</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon">6</span> Compost + Fungal Extract Enhancement</h4>
+              <p style="font-size: 8pt; margin: 4pt 0;">Base compost with fungal extract applications</p>
+            </div>
+          </div>
+
+          <div class="info-box" style="margin-top: 10pt;">
+            <strong><i class="fas fa-asterisk" style="margin-right: 6pt;"></i> Optional:</strong> Bare Soil Control may also be included for comparison
+          </div>
+
+          </div>
+        <div class="page-number">5</div>
+      </div>
+
+      <!-- SECTION 4: CROP ROTATIONS -->
+      <div class="page" id="section4">
+        <div class="page-content">
+          <h2><i class="fas fa-sync-alt" style="margin-right: 8pt; color: #27ae60;"></i>4. CROP ROTATIONS</h2>
+
+          <p>Three crop rotations per year support biological succession from <strong>bacterial → balanced → fungal-leaning</strong> soils:</p>
+
+          <!-- Crop Rotation Wheel Graphic -->
+          <div class="image-container" style="margin: 15pt 0; text-align: center;">
+            <img src="assets/crop-rotation-graphic.png" alt="Crop Rotation Calendar" style="max-height: 2.5in; border-radius: 8pt;" />
+            <div class="image-caption">Annual Crop Rotation Calendar: Hemp, Summer Grains & Legumes, Cool-Season Grains</div>
+          </div>
+
+          <div class="timeline-bar" style="margin: 10pt 0;">
+            <div class="timeline-segment hemp" style="width: 50%;">
+              <i class="fas fa-cannabis" style="margin-right: 6pt;"></i> Hemp (Jan–Jun)
+            </div>
+            <div class="timeline-segment summer" style="width: 25%;">
+              <i class="fas fa-sun" style="margin-right: 4pt;"></i> Summer (Jul–Sep)
+            </div>
+            <div class="timeline-segment fall" style="width: 25%;">
+              <i class="fas fa-leaf" style="margin-right: 4pt;"></i> Fall (Oct–Dec)
+            </div>
+          </div>
+
+          <!-- Image: Industrial Hemp Field -->
+          <div style="display: flex; gap: 10pt; margin: 10pt 0;">
+            <div style="flex: 1;">
+              <div class="image-container">
+                <img src="assets/industrial-hemp-field.png" alt="Industrial Hemp Field" style="max-height: 1.5in;" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 15pt;\'><i class=\'fas fa-cannabis\'></i><div>Hemp Field</div></div>'" />
+              </div>
+            </div>
+            <div style="flex: 1;">
+              <div class="image-container">
+                <img src="assets/summer-crops-sorghum.png" alt="Summer Crops" style="max-height: 1.5in;" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 15pt;\'><i class=\'fas fa-sun\'></i><div>Summer Crops</div></div>'" />
+              </div>
+            </div>
+          </div>
+
+          <div class="rotation-card" style="padding: 6pt 10pt; margin: 5pt 0;">
+            <h4 style="margin-bottom: 4pt;"><i class="fas fa-cannabis" style="color: #27ae60; margin-right: 8pt;"></i> Rotation 1: Industrial Hemp (Primary Crop) — January to June</h4>
+            <p style="font-size: 8pt; margin: 0;">Grown annually as the primary economic crop. Provides exceptional root density, canopy cover, and market value.</p>
+            <p style="font-size: 8pt; margin: 4pt 0 0 0; color: #27ae60;"><strong>Benefits:</strong> Deep taproot system, high biomass production, economic output, excellent soil structure building</p>
+          </div>
+
+          <div class="rotation-card" style="padding: 6pt 10pt; margin: 5pt 0;">
+            <h4 style="margin-bottom: 4pt;"><i class="fas fa-sun" style="color: #f39c12; margin-right: 8pt;"></i> Rotation 2: Summer Crops — July to September</h4>
+            <p style="font-size: 8pt; margin: 0 0 4pt 0;">Grains and legumes selected for high biomass production and mycorrhizal compatibility:</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6pt;">
+              <div>
+                <strong style="font-size: 8pt; color: #666;">Grains:</strong>
+                <span style="font-size: 8pt;"> Sorghum, Millet, Teff, Sudangrass</span>
+              </div>
+              <div>
+                <strong style="font-size: 8pt; color: #666;">Legumes:</strong>
+                <span style="font-size: 8pt;"> Cowpeas, Pigeon Pea, Sunhemp</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rotation-card" style="padding: 6pt 10pt; margin: 5pt 0;">
+            <h4 style="margin-bottom: 4pt;"><i class="fas fa-leaf" style="color: #795548; margin-right: 8pt;"></i> Rotation 3: Fall Crops — October to December</h4>
+            <p style="font-size: 8pt; margin: 0 0 4pt 0;">Cool-season grains and legumes for continued soil building:</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6pt;">
+              <div>
+                <strong style="font-size: 8pt; color: #666;">Grains:</strong>
+                <span style="font-size: 8pt;"> Oats, Barley, Rye, Triticale</span>
+              </div>
+              <div>
+                <strong style="font-size: 8pt; color: #666;">Legumes:</strong>
+                <span style="font-size: 8pt;"> Hairy vetch, Crimson clover, Fava bean</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box primary" style="margin-top: 10pt;">
+            <strong><i class="fas fa-chart-line" style="margin-right: 6pt;"></i> Succession Goal:</strong> This rotation sequence accelerates the transition from bacterial-dominant to fungal-dominant soil biology, building water-holding capacity and long-term fertility.
+          </div>
+        </div>
+        <div class="page-number">6</div>
+      </div>
+
+      <!-- SECTION 5: BIOLOGICAL INPUTS -->
+      <div class="page" id="section5">
+        <div class="page-content">
+          <h2><i class="fas fa-bacteria" style="margin-right: 8pt; color: #27ae60;"></i>5. BIOLOGICAL INPUTS</h2>
+
+          <h3><i class="fas fa-truck-loading" style="margin-right: 8pt; color: #27ae60;"></i>5.1 Compost Application Taper (5-Year Schedule)</h3>
+
+          <div class="year-grid" style="margin: 8pt 0;">
+            <div class="year-box" style="padding: 6pt;">
+              <div class="year">Year 1</div>
+              <div class="amount">10</div>
+              <div class="unit">tons/acre</div>
+            </div>
+            <div class="year-box" style="padding: 6pt;">
+              <div class="year">Year 2</div>
+              <div class="amount">8</div>
+              <div class="unit">tons/acre</div>
+            </div>
+            <div class="year-box" style="padding: 6pt;">
+              <div class="year">Year 3</div>
+              <div class="amount">6</div>
+              <div class="unit">tons/acre</div>
+            </div>
+            <div class="year-box" style="padding: 6pt;">
+              <div class="year">Year 4</div>
+              <div class="amount">4-5</div>
+              <div class="unit">tons/acre</div>
+            </div>
+            <div class="year-box" style="padding: 6pt;">
+              <div class="year">Year 5</div>
+              <div class="amount">3-4</div>
+              <div class="unit">tons/acre</div>
+            </div>
+          </div>
+
+          <p style="font-size: 8pt; color: #666; text-align: center; margin: 4pt 0;"><i class="fas fa-info-circle"></i> Compost rates decrease as soil biology becomes self-sustaining</p>
+
+          <!-- Image: Compost Application -->
+          <div class="image-container" style="margin: 10pt 0;">
+            <img src="assets/compost-application-field.png" alt="Compost Application" style="max-height: 1.8in;" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 15pt;\'><i class=\'fas fa-truck\'></i><div style=\'font-weight: 600;\'>Compost Application</div><div class=\'placeholder-text\'>Field application in progress</div></div>'" />
+            <div class="image-caption">Compost spreading on research plots</div>
+          </div>
+
+          <h3><i class="fas fa-gem" style="margin-right: 8pt; color: #27ae60;"></i>5.2 Gypsum Application Schedule</h3>
+
+          <table class="data-table" style="font-size: 8pt; margin: 8pt 0;">
+            <thead>
+              <tr>
+                <th style="padding: 6pt;">Year</th>
+                <th style="padding: 6pt;">Rate</th>
+                <th style="padding: 6pt;">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 5pt;"><strong>Year 1</strong></td>
+                <td style="padding: 5pt;">1 ton/acre</td>
+                <td style="padding: 5pt;">Full application for initial soil conditioning</td>
+              </tr>
+              <tr>
+                <td style="padding: 5pt;"><strong>Year 2</strong></td>
+                <td style="padding: 5pt;">0.5–1 ton/acre</td>
+                <td style="padding: 5pt;">Adjusted based on soil test results</td>
+              </tr>
+              <tr>
+                <td style="padding: 5pt;"><strong>Year 3</strong></td>
+                <td style="padding: 5pt;">0.25–0.5 ton/acre</td>
+                <td style="padding: 5pt;">Maintenance application</td>
+              </tr>
+              <tr>
+                <td style="padding: 5pt;"><strong>Years 4–5</strong></td>
+                <td style="padding: 5pt;">As needed</td>
+                <td style="padding: 5pt;">Only if SAR or infiltration requires correction</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3><i class="fas fa-droplet" style="margin-right: 8pt; color: #27ae60;"></i>5.3 Fungal Extract Application Protocol</h3>
+
+          <div class="key-points" style="padding: 8pt 10pt;">
+            <h4 style="margin-bottom: 6pt; font-size: 9pt;"><i class="fas fa-calendar-alt" style="color: #27ae60; margin-right: 6pt;"></i> Application Timing</h4>
+            <p style="font-size: 8pt; margin: 0;">Applied at <strong>all seasonal transitions</strong> throughout the year:</p>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8pt; margin-top: 8pt;">
+              <div class="metric-card" style="padding: 6pt;">
+                <i class="fas fa-cannabis" style="font-size: 16pt; color: #27ae60;"></i>
+                <div class="label" style="font-size: 7pt;">Pre-Hemp<br/>(January)</div>
+              </div>
+              <div class="metric-card" style="padding: 6pt;">
+                <i class="fas fa-sun" style="font-size: 16pt; color: #f39c12;"></i>
+                <div class="label" style="font-size: 7pt;">Pre-Summer<br/>(July)</div>
+              </div>
+              <div class="metric-card" style="padding: 6pt;">
+                <i class="fas fa-leaf" style="font-size: 16pt; color: #795548;"></i>
+                <div class="label" style="font-size: 7pt;">Pre-Fall<br/>(October)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box success" style="padding: 8pt; margin-top: 8pt; font-size: 9pt;">
+            <strong>Application Rate:</strong> 50–60 gallons/acre per application<br/>
+            <strong>Method:</strong> Banded drench over crop rows for maximum root zone penetration
+          </div>
+        </div>
+        <div class="page-number">7</div>
+      </div>
+
+      <!-- SECTION 6: MONITORING -->
+      <div class="page" id="section6">
+        <div class="page-content">
+          <h2><i class="fas fa-chart-line" style="margin-right: 8pt; color: #27ae60;"></i>6. SOIL MONITORING & MEASUREMENTS</h2>
+
+          <p>Comprehensive soil monitoring at baseline and annually tracks the progression of soil health across all treatments.</p>
+
+          <div class="two-col">
+            <div class="section-box">
+              <h3 style="border-bottom-color: #27ae60;"><i class="fas fa-microscope" style="margin-right: 8pt;"></i> Physical & Biological</h3>
+              <table class="data-table" style="margin: 0;">
+                <tbody>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #27ae60; margin-right: 6pt;"></i> <strong>SOC</strong></td>
+                    <td>Soil Organic Carbon</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #27ae60; margin-right: 6pt;"></i> <strong>F:B Ratio</strong></td>
+                    <td>Fungal to Bacterial Ratio</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #27ae60; margin-right: 6pt;"></i> <strong>Bulk Density</strong></td>
+                    <td>Soil compaction measure</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #27ae60; margin-right: 6pt;"></i> <strong>Infiltration</strong></td>
+                    <td>Water absorption rate</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #27ae60; margin-right: 6pt;"></i> <strong>Aggregates</strong></td>
+                    <td>Aggregate Stability</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section-box">
+              <h3 style="border-bottom-color: #f39c12;"><i class="fas fa-flask" style="margin-right: 8pt;"></i> Chemical Metrics</h3>
+              <table class="data-table" style="margin: 0;">
+                <tbody>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>EC</strong></td>
+                    <td>Electrical Conductivity</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>SAR</strong></td>
+                    <td>Sodium Adsorption Ratio</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>CEC</strong></td>
+                    <td>Cation Exchange Capacity</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>pH</strong></td>
+                    <td>Soil acidity/alkalinity</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>NPK</strong></td>
+                    <td>Available N, P, K</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-circle" style="color: #f39c12; margin-right: 6pt;"></i> <strong>POXC</strong></td>
+                    <td>Active Carbon</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Images: Soil Testing -->
+          <div style="display: flex; gap: 15pt; margin: 15pt 0;">
+            <div style="flex: 1;">
+              <div class="image-container">
+                <img src="assets/soil-sampling-field.png" alt="Soil Sampling" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 20pt;\'><i class=\'fas fa-vial\'></i><div>Soil Sampling</div></div>'" />
+                <div class="image-caption">Field soil sampling</div>
+              </div>
+            </div>
+            <div style="flex: 1;">
+              <div class="image-container">
+                <img src="assets/infiltration-test.png" alt="Infiltration Test" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\' style=\'padding: 20pt;\'><i class=\'fas fa-tint\'></i><div>Infiltration Test</div></div>'" />
+                <div class="image-caption">Water infiltration testing</div>
+              </div>
+            </div>
+          </div>
+
+          </div>
+        <div class="page-number">8</div>
+      </div>
+
+      <!-- SECTION 6 CONTINUED: DASHBOARD -->
+      <div class="page" id="section6-dashboard">
+        <div class="page-content">
+          <h3><i class="fas fa-calendar-check" style="margin-right: 8pt; color: #27ae60;"></i>Measurement Schedule</h3>
+
+          <div class="two-col" style="margin: 10pt 0;">
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-play-circle"></i></span> Baseline Testing</h4>
+              <p style="font-size: 9pt; margin: 4pt 0 0 0;">Complete soil profile analysis before any treatments are applied (Year 0)</p>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-redo"></i></span> Annual Testing</h4>
+              <p style="font-size: 9pt; margin: 4pt 0 0 0;">All metrics measured at the same time each year for consistent comparison</p>
+            </div>
+          </div>
+
+          <h3><i class="fas fa-chart-line" style="margin-right: 8pt; color: #27ae60;"></i>Interactive Soil Health Dashboard</h3>
+
+          <p>To track and visualize soil health progression across all treatments, we will create a <strong>custom interactive dashboard</strong> that displays real-time metrics including Soil Organic Carbon (SOC), Fungal-to-Bacterial Ratio (F:B), Bulk Density, Infiltration rates, and Active Carbon levels. This dashboard will enable stakeholders to monitor progress toward targets and compare treatment performance over the five-year study period.</p>
+
+          <!-- Image: Soil Health Dashboard -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/soil-health-dashboard.png" alt="Soil Health Dashboard" style="width: 100%; border-radius: 8pt; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+            <div class="image-caption">Soil Health Dashboard - Tracking 5-year progression across all treatment plots</div>
+          </div>
+
+          <!-- F:B Range and Soil Succession Graphics -->
+          <div class="two-col" style="margin: 15pt 0; gap: 15pt;">
+            <div class="image-container">
+              <img src="assets/fb-range-chart.png" alt="F:B Range Chart" style="width: 100%; border-radius: 8pt;" />
+              <div class="image-caption">F:B Ratio Target Ranges by Crop Type</div>
+            </div>
+            <div class="image-container">
+              <img src="assets/soil-succession.png" alt="Soil Succession" style="width: 100%; border-radius: 8pt;" />
+              <div class="image-caption">5-Year Soil Succession Trajectory</div>
+            </div>
+          </div>
+
+          <div class="key-points">
+            <h4><i class="fas fa-tachometer-alt" style="color: #27ae60; margin-right: 6pt;"></i> Dashboard Features</h4>
+            <ul style="margin-top: 6pt; margin-bottom: 0;">
+              <li><strong>Real-time metrics</strong> - SOC, F:B Ratio, Bulk Density, Infiltration, Active Carbon</li>
+              <li><strong>Progress tracking</strong> - Visual progress bars showing advancement toward targets</li>
+              <li><strong>Treatment comparison</strong> - Side-by-side analysis of all soil treatments</li>
+              <li><strong>5-year trends</strong> - Historical charts showing soil health progression over time</li>
+            </ul>
+          </div>
+        </div>
+        <div class="page-number">9</div>
+      </div>
+
+      <!-- SECTION 7: ECONOMIC EVALUATION -->
+      <div class="page" id="section7">
+        <div class="page-content">
+          <h2><i class="fas fa-dollar-sign" style="margin-right: 8pt; color: #27ae60;"></i>7. ECONOMIC EVALUATION</h2>
+
+          <p>The study provides comprehensive cost-benefit analysis comparing regenerative systems versus industrial agriculture approaches.</p>
+
+          <h3><i class="fas fa-balance-scale-right" style="margin-right: 8pt; color: #27ae60;"></i>Comparison Metrics</h3>
+
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10pt; margin: 15pt 0;">
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-truck"></i></span> Input Costs</h4>
+              <ul style="font-size: 8pt; margin: 6pt 0 0 15pt;">
+                <li>Compost & amendments</li>
+                <li>Fungal extract applications</li>
+                <li>Gypsum applications</li>
+                <li>Seed costs</li>
+              </ul>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-cogs"></i></span> Operations</h4>
+              <ul style="font-size: 8pt; margin: 6pt 0 0 15pt;">
+                <li>Irrigation volume</li>
+                <li>Labor requirements</li>
+                <li>Equipment needs</li>
+                <li>Tractor passes</li>
+              </ul>
+            </div>
+            <div class="treatment-card">
+              <h4><span class="icon"><i class="fas fa-chart-pie"></i></span> Returns</h4>
+              <ul style="font-size: 8pt; margin: 6pt 0 0 15pt;">
+                <li>Crop yields</li>
+                <li>Market value</li>
+                <li>Long-term savings</li>
+                <li>Reduced inputs</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Image: Economic Comparison Chart -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/economic-comparison-chart.png" alt="Economic Comparison" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-chart-bar\'></i><div style=\'font-weight: 600;\'>Economic Comparison Chart</div><div class=\'placeholder-text\'>Industrial vs. Regenerative 5-Year Costs</div></div>'" />
+            <div class="image-caption">5-Year cost comparison: Industrial vs. Regenerative systems</div>
+          </div>
+
+          <h3><i class="fas fa-industry" style="margin-right: 8pt; color: #27ae60;"></i>Industrial vs. Regenerative Comparison</h3>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Factor</th>
+                <th>Industrial System</th>
+                <th>Regenerative System</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Capital Equipment</strong></td>
+                <td>High (large tractors, implements)</td>
+                <td>Reduced footprint</td>
+              </tr>
+              <tr>
+                <td><strong>Fertilizer Dependency</strong></td>
+                <td>High annual cost, increasing</td>
+                <td>Decreasing over time</td>
+              </tr>
+              <tr>
+                <td><strong>Water Usage</strong></td>
+                <td>Standard irrigation rates</td>
+                <td>Reduced (improved infiltration)</td>
+              </tr>
+              <tr>
+                <td><strong>Soil Biology</strong></td>
+                <td>Degrading over time</td>
+                <td>Improving annually</td>
+              </tr>
+              <tr>
+                <td><strong>Long-term Trend</strong></td>
+                <td>Increasing costs, declining yields</td>
+                <td>Decreasing costs, stable yields</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="key-points">
+            <h4><i class="fas fa-calculator" style="color: #27ae60; margin-right: 6pt;"></i> ROI Model Output</h4>
+            <p>The economic evaluation produces a comprehensive ROI model for farmers evaluating a regenerative transition, including:</p>
+            <ul style="margin-top: 8pt;">
+              <li>Break-even analysis by treatment type</li>
+              <li>5-year cost projections</li>
+              <li>Yield comparison data</li>
+              <li>Water savings calculations</li>
+              <li>Labor efficiency metrics</li>
+            </ul>
+          </div>
+        </div>
+        <div class="page-number">10</div>
+      </div>
+
+      <!-- SECTION 8: PROJECT OUTCOMES -->
+      <div class="page" id="section8">
+        <div class="page-content">
+          <h2><i class="fas fa-trophy" style="margin-right: 8pt; color: #27ae60;"></i>8. PROJECT OUTCOMES</h2>
+
+          <p>At the end of five years, the study will deliver comprehensive, actionable results for farmers and researchers:</p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12pt; margin: 15pt 0;">
+            <div class="section-box" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-color: #27ae60;">
+              <h4 style="margin-top: 0; color: #1a3d2e;"><i class="fas fa-award" style="color: #27ae60; margin-right: 8pt;"></i> Validated System</h4>
+              <p style="font-size: 9pt;">A proven regenerative crop rotation system specifically designed for desert soils</p>
+            </div>
+            <div class="section-box" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-color: #2196F3;">
+              <h4 style="margin-top: 0; color: #1565c0;"><i class="fas fa-sort-amount-up" style="color: #2196F3; margin-right: 8pt;"></i> Ranked Treatments</h4>
+              <p style="font-size: 9pt;">Soil blends ranked by performance, cost-effectiveness, and biological value</p>
+            </div>
+            <div class="section-box" style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-color: #FF9800;">
+              <h4 style="margin-top: 0; color: #e65100;"><i class="fas fa-balance-scale" style="color: #FF9800; margin-right: 8pt;"></i> Economic Analysis</h4>
+              <p style="font-size: 9pt;">Detailed economic comparisons to industrial agriculture with ROI projections</p>
+            </div>
+            <div class="section-box" style="background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); border-color: #9C27B0;">
+              <h4 style="margin-top: 0; color: #6a1b9a;"><i class="fas fa-chart-line" style="color: #9C27B0; margin-right: 8pt;"></i> Succession Data</h4>
+              <p style="font-size: 9pt;">Soil carbon and fungal succession trajectories across all treatments</p>
+            </div>
+          </div>
+
+          <div class="key-points" style="background: linear-gradient(135deg, #e8f5e9 0%, #a5d6a7 100%); border-left-color: #1e8449;">
+            <h4 style="margin-top: 0;"><i class="fas fa-book-open" style="color: #1e8449; margin-right: 8pt;"></i> Farmer-Ready Transition Guide</h4>
+            <p>A comprehensive, field-tested guide enabling farmers to implement the validated system on their own operations, including:</p>
+            <div class="two-col" style="margin-top: 10pt;">
+              <ul style="font-size: 9pt;">
+                <li>Step-by-step implementation protocols</li>
+                <li>Equipment recommendations</li>
+                <li>Application timing calendars</li>
+                <li>Crop selection guidance</li>
+              </ul>
+              <ul style="font-size: 9pt;">
+                <li>Troubleshooting guides</li>
+                <li>Cost estimation worksheets</li>
+                <li>Soil testing protocols</li>
+                <li>Success metrics and KPIs</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Image: Transition Guide -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/transition-guide-mockup.png" alt="Transition Guide" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-book\'></i><div style=\'font-weight: 600;\'>Desert Regenerative Agriculture Transition Guide</div><div class=\'placeholder-text\'>Comprehensive farmer implementation manual</div></div>'" />
+            <div class="image-caption">Farmer-ready Transition Guide deliverable</div>
+          </div>
+
+          <h3><i class="fas fa-image" style="margin-right: 8pt; color: #27ae60;"></i>Deliverable Graphics Package</h3>
+
+          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8pt; margin: 10pt 0;">
+            <div class="metric-card">
+              <i class="fas fa-layer-group" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">Soil Profile<br/>Illustrations</div>
+            </div>
+            <div class="metric-card">
+              <i class="fas fa-project-diagram" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">Concept<br/>Maps</div>
+            </div>
+            <div class="metric-card">
+              <i class="fas fa-map" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">24-Acre<br/>Field Map</div>
+            </div>
+            <div class="metric-card">
+              <i class="fas fa-dna" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">Succession<br/>Graphics</div>
+            </div>
+            <div class="metric-card">
+              <i class="fas fa-chart-area" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">Input Curve<br/>Graphics</div>
+            </div>
+            <div class="metric-card">
+              <i class="fas fa-sync" style="font-size: 16pt; color: #27ae60;"></i>
+              <div class="label" style="margin-top: 6pt; font-size: 7pt;">Rotation<br/>Diagrams</div>
+            </div>
+          </div>
+        </div>
+        <div class="page-number">11</div>
+      </div>
+
+      <!-- SECTION 9: FIELD PROTOCOL -->
+      <div class="page" id="section9">
+        <div class="page-content">
+          <h2><i class="fas fa-tractor" style="margin-right: 8pt; color: #27ae60;"></i>9. DESERT REGENERATIVE EXTRACT FIELD PROTOCOL</h2>
+          <div style="text-align: center; font-size: 11pt; color: #666; margin-bottom: 15pt;">
+            <strong>Grains → Legumes → Industrial Hemp (24 Acres) | Year 1: Soil Jumpstart Program</strong>
+          </div>
+
+          <div class="info-box primary">
+            <strong><i class="fas fa-bullseye" style="margin-right: 6pt;"></i> Purpose:</strong> Rebuild microbial life in arid soils, improve infiltration, increase root depth, and support high-performing annual crops using on-site extract production (750 gal/hr) and water bubble for deep drenching.
+          </div>
+
+          <h3><i class="fas fa-tachometer-alt" style="margin-right: 8pt; color: #27ae60;"></i>9.1 Application Rates (Year 1)</h3>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10pt;">
+            <div class="rotation-card" style="border-color: #795548;">
+              <h4 style="color: #795548;"><i class="fas fa-wheat-alt" style="margin-right: 6pt;"></i> Grains (Oct–Dec)</h4>
+              <table style="width: 100%; font-size: 8pt; margin-top: 8pt;">
+                <tr><td><strong>Extract:</strong></td><td>60 gal/ac</td></tr>
+                <tr><td><strong>Water:</strong></td><td>700–1,000 gal/ac</td></tr>
+                <tr><td><strong>Timing:</strong></td><td>Planting or 1–3 leaf</td></tr>
+                <tr><td><strong>Method:</strong></td><td>Banded drench</td></tr>
+              </table>
+            </div>
+            <div class="rotation-card" style="border-color: #f39c12;">
+              <h4 style="color: #e65100;"><i class="fas fa-seedling" style="margin-right: 6pt;"></i> Legumes (Jun–Sep)</h4>
+              <table style="width: 100%; font-size: 8pt; margin-top: 8pt;">
+                <tr><td><strong>Extract:</strong></td><td>50–60 gal/ac</td></tr>
+                <tr><td><strong>Water:</strong></td><td>600–800 gal/ac</td></tr>
+                <tr><td><strong>Timing:</strong></td><td>In-furrow or V2–V3</td></tr>
+                <tr><td><strong>Method:</strong></td><td>Nodulation zone</td></tr>
+              </table>
+            </div>
+            <div class="rotation-card" style="border-color: #27ae60;">
+              <h4 style="color: #1e8449;"><i class="fas fa-cannabis" style="margin-right: 6pt;"></i> Hemp (Jan–Jun)</h4>
+              <table style="width: 100%; font-size: 8pt; margin-top: 8pt;">
+                <tr><td><strong>Extract:</strong></td><td>70 gal/ac</td></tr>
+                <tr><td><strong>Water:</strong></td><td>800–1,200 gal/ac</td></tr>
+                <tr><td><strong>Timing:</strong></td><td>Emergence/transplant</td></tr>
+                <tr><td><strong>Boost:</strong></td><td>+30 gal/ac @ 21–30 days</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <!-- Image: Drench Application -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/drench-application.png" alt="Drench Application" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-spray-can\'></i><div style=\'font-weight: 600;\'>Drench Application</div><div class=\'placeholder-text\'>Biological extract being applied to crop rows</div></div>'" />
+            <div class="image-caption">Biological extract drench application in hemp rows</div>
+          </div>
+        </div>
+        <div class="page-number">12</div>
+      </div>
+
+      <!-- SECTION 9 CONTINUED: FIELD TOTALS -->
+      <div class="page" id="section9-totals">
+        <div class="page-content">
+          <h3><i class="fas fa-calculator" style="margin-right: 8pt; color: #27ae60;"></i>9.2 Field Totals for 24 Acres (Year 1)</h3>
+
+          <div class="two-col">
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-flask" style="color: #27ae60; margin-right: 6pt;"></i> Extract Required</h4>
+              <table style="width: 100%; font-size: 9pt;">
+                <tr><td>Grains (8 ac × 60):</td><td style="text-align: right;"><strong>480 gal</strong></td></tr>
+                <tr><td>Legumes (8 ac × 60):</td><td style="text-align: right;"><strong>480 gal</strong></td></tr>
+                <tr><td>Hemp (8 ac × 70):</td><td style="text-align: right;"><strong>560 gal</strong></td></tr>
+                <tr style="border-top: 2px solid #27ae60;"><td><strong>TOTAL:</strong></td><td style="text-align: right;"><strong>1,520 gal</strong></td></tr>
+              </table>
+              <div class="info-box success" style="margin-top: 8pt; font-size: 8pt; padding: 6pt;">
+                Extractor run time: 1,520 ÷ 750 = <strong>~2 hours</strong>
+              </div>
+            </div>
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-tint" style="color: #2196F3; margin-right: 6pt;"></i> Water Required</h4>
+              <table style="width: 100%; font-size: 9pt;">
+                <tr><td>Average dilution:</td><td style="text-align: right;">~900 gal/ac</td></tr>
+                <tr><td>24 ac × 900:</td><td style="text-align: right;"><strong>~21,600 gal</strong></td></tr>
+              </table>
+              <div class="info-box" style="margin-top: 8pt; font-size: 8pt; padding: 6pt;">
+                Water bubble loads: <strong>9–11 fills</strong> (depending on tank size)
+              </div>
+            </div>
+          </div>
+
+          <h3><i class="fas fa-arrow-down" style="margin-right: 8pt; color: #27ae60;"></i>Year 2+ Maintenance Rates</h3>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Crop</th>
+                <th>Extract Rate</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Grains</strong></td>
+                <td>40 gal/ac</td>
+                <td>Early season only</td>
+              </tr>
+              <tr>
+                <td><strong>Legumes</strong></td>
+                <td>40 gal/ac</td>
+                <td>In-furrow or early drench</td>
+              </tr>
+              <tr>
+                <td><strong>Hemp</strong></td>
+                <td>50 gal/ac</td>
+                <td>Optional mid-season 20 gal/ac</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="page-number">13</div>
+      </div>
+
+      <!-- SECTION 10: FUNGAL FORMULAS -->
+      <div class="page" id="section10">
+        <div class="page-content">
+          <h2><i class="fas fa-microscope" style="margin-right: 8pt; color: #27ae60;"></i>10. FUNGAL-DOMINANT EXTRACT FORMULAS</h2>
+
+          <h3><i class="fas fa-bacteria" style="margin-right: 8pt; color: #27ae60;"></i>10.1 Understanding Fungal vs. Bacterial Dominance</h3>
+
+          <div class="info-box" style="border-left-color: #e74c3c;">
+            <strong><i class="fas fa-exclamation-triangle" style="margin-right: 6pt;"></i> Key Insight:</strong> Dairy-based vermicompost is <strong>bacterial-heavy by default</strong>. While excellent for annual crops and quick nutrient cycling, it won't achieve the fungal dominance needed for perennial systems or BEAM-level inoculation.
+          </div>
+
+          <!-- Image: Mycorrhizal Networks -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/mycorrhizal-networks.png" alt="Mycorrhizal Networks" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-network-wired\'></i><div style=\'font-weight: 600;\'>Mycorrhizal Fungal Networks</div><div class=\'placeholder-text\'>Illustration of underground fungal highways</div></div>'" />
+            <div class="image-caption">Mycorrhizal networks connecting plant roots underground</div>
+          </div>
+
+          <div class="two-col">
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-times-circle" style="color: #e74c3c; margin-right: 6pt;"></i> Bacterial Indicators</h4>
+              <ul style="font-size: 9pt;">
+                <li>High nitrogen content</li>
+                <li>Fine texture materials</li>
+                <li>Fast breakdown rates</li>
+                <li>Dairy/manure based</li>
+                <li>Worm-processed materials</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-check-circle" style="color: #27ae60; margin-right: 6pt;"></i> Fungal Requirements</h4>
+              <ul style="font-size: 9pt;">
+                <li>Carbon & lignin-rich feedstocks</li>
+                <li>Wood chips & shredded branches</li>
+                <li>Partially decomposed bark</li>
+                <li>Leaf litter & straw</li>
+                <li>Biochar (holds hyphae)</li>
+              </ul>
+            </div>
+          </div>
+
+          </div>
+        <div class="page-number">14</div>
+      </div>
+
+      <!-- SECTION 10 CONTINUED: SSW FORMULA -->
+      <div class="page" id="section10-formula">
+        <div class="page-content">
+          <h3><i class="fas fa-flask" style="margin-right: 8pt; color: #27ae60;"></i>10.2 The SSW Fungal Formula</h3>
+
+          <div class="key-points" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);">
+            <h4 style="margin-top: 0;"><i class="fas fa-star" style="color: #1e8449; margin-right: 6pt;"></i> Compost Blend for Fungal Extraction</h4>
+            <table style="width: 100%; font-size: 9pt; margin-top: 8pt;">
+              <tr>
+                <td style="width: 15%; text-align: center; font-weight: bold; color: #1e8449;">50%</td>
+                <td>Shredded wood chips + leaf litter</td>
+              </tr>
+              <tr>
+                <td style="text-align: center; font-weight: bold; color: #1e8449;">25%</td>
+                <td>Partially composted mulch/wood fines</td>
+              </tr>
+              <tr>
+                <td style="text-align: center; font-weight: bold; color: #1e8449;">15%</td>
+                <td>Vermicompost</td>
+              </tr>
+              <tr>
+                <td style="text-align: center; font-weight: bold; color: #1e8449;">5%</td>
+                <td>Mature dairy compost</td>
+              </tr>
+              <tr>
+                <td style="text-align: center; font-weight: bold; color: #1e8449;">5%</td>
+                <td>Biochar + forest duff</td>
+              </tr>
+            </table>
+            <p style="font-size: 8pt; color: #666; margin: 8pt 0 0 0;"><i class="fas fa-clock"></i> Build, wet, and let sit 3–6 months for dark, hyphae-loaded fungal material</p>
+          </div>
+
+          <h3><i class="fas fa-blender" style="margin-right: 8pt; color: #27ae60;"></i>Extractor Basket Mix</h3>
+
+          <div class="formula-box">
+            <strong>For each extraction batch:</strong><br/>
+            • 8–10 lbs fungal compost blend<br/>
+            • 2–3 lbs vermicompost<br/>
+            • <span style="color: #e74c3c;">NO sugar/molasses</span><br/>
+            • Minimal agitation (fungal hyphae are fragile)
+          </div>
+
+          <div class="info-box" style="border-left-color: #e74c3c;">
+            <strong><i class="fas fa-ban" style="color: #e74c3c; margin-right: 6pt;"></i> Critical Warning:</strong> Molasses will explode bacterial counts and destroy fungal ratios. Use it <strong>ONLY</strong> when making bacterial teas, never for fungal extracts.
+          </div>
+        </div>
+        <div class="page-number">15</div>
+      </div>
+
+      <!-- SECTION 11: APPENDIX -->
+      <div class="page" id="section11">
+        <div class="page-content">
+          <h2><i class="fas fa-book" style="margin-right: 8pt; color: #27ae60;"></i>11. APPENDIX</h2>
+
+          <h3><i class="fas fa-clipboard-list" style="margin-right: 8pt; color: #27ae60;"></i>11.1 Field Application Checklist</h3>
+
+          <div class="two-col">
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-play" style="color: #27ae60; margin-right: 6pt;"></i> Before Application</h4>
+              <ul class="checklist">
+                <li>Extract brewer functioning</li>
+                <li>Dry extract material on site</li>
+                <li>Water bubble filled</li>
+                <li>Soil moisture test completed</li>
+                <li>Nozzle set for coarse droplet</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h4 style="margin-top: 0;"><i class="fas fa-spinner" style="color: #f39c12; margin-right: 6pt;"></i> During Application</h4>
+              <ul class="checklist">
+                <li>Maintain constant ground speed</li>
+                <li>Watch for runoff (hydrophobicity)</li>
+                <li>Re-wet if needed</li>
+                <li>Monitor extract flow rate</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <h4 style="margin-top: 0;"><i class="fas fa-flag-checkered" style="color: #2196F3; margin-right: 6pt;"></i> After Application</h4>
+            <ul class="checklist">
+              <li>Document gallons per acre applied</li>
+              <li>Note soil penetration depth achieved</li>
+              <li>Record weather conditions (temp, wind, humidity)</li>
+              <li>Schedule next application pass</li>
+              <li>Clean and store equipment properly</li>
+            </ul>
+          </div>
+
+          </div>
+        <div class="page-number">16</div>
+      </div>
+
+      <!-- SECTION 11 CONTINUED: MIXING CHART -->
+      <div class="page" id="section11-chart">
+        <div class="page-content">
+          <h3><i class="fas fa-table" style="margin-right: 8pt; color: #27ae60;"></i>11.2 Mixing & Tank Chart</h3>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Extract Rate (gal/ac)</th>
+                <th>Water Volume (gal/ac)</th>
+                <th>Total Mix (gal/ac)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>50</td>
+                <td>600</td>
+                <td><strong>650</strong></td>
+              </tr>
+              <tr>
+                <td>60</td>
+                <td>800</td>
+                <td><strong>860</strong></td>
+              </tr>
+              <tr>
+                <td>70</td>
+                <td>1,000</td>
+                <td><strong>1,070</strong></td>
+              </tr>
+              <tr>
+                <td>30 (top-up)</td>
+                <td>400</td>
+                <td><strong>430</strong></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="key-points">
+            <h4><i class="fas fa-truck-monster" style="color: #27ae60; margin-right: 6pt;"></i> Water Bubble Example (2,000-gal tank)</h4>
+            <p>For a 60 gal/ac rate at 860 total gal/ac → 2,000-gal tank covers <strong>~2.3 acres per fill</strong></p>
+          </div>
+
+          <!-- Image: Healthy Soil -->
+          <div class="image-container" style="margin: 15pt 0;">
+            <img src="assets/healthy-soil-handful.png" alt="Healthy Soil" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'><i class=\'fas fa-hand-holding-seedling\'></i><div style=\'font-weight: 600;\'>Healthy Regenerative Soil</div><div class=\'placeholder-text\'>The goal: rich, living soil</div></div>'" />
+            <div class="image-caption">The result: dark, rich, living soil full of organic matter</div>
+          </div>
+
+          <div style="text-align: center; margin-top: 30pt; padding-top: 20pt; border-top: 2px solid #e0e0e0;">
+            <img src="assets/logo/ssw-logo.png" alt="SSW Logo" style="max-width: 100px; opacity: 0.7;" onerror="this.style.display='none'" />
+            <p style="font-size: 9pt; color: #999; margin-top: 10pt;">
+              © 2024 Soil Seed & Water. All Rights Reserved.<br/>
+              Prepared for Caroline Kramer
+            </p>
+          </div>
+        </div>
+        <div class="page-number">17</div>
+      </div>
+
+    </div>
+
+    <script>
+      // PDF Export Function
+      async function exportToPDF() {
+        const btn = document.querySelector('.pdf-export-btn');
+        btn.classList.add('exporting');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        const element = document.getElementById('document-content');
+        const opt = {
+          margin: 0,
+          filename: 'Regenerative-Field-Trial-Proposal.pdf',
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false
+          },
+          jsPDF: {
+            unit: 'in',
+            format: 'letter',
+            orientation: 'portrait'
+          },
+          pagebreak: { mode: ['css', 'legacy'] }
+        };
+
+        try {
+          await html2pdf().set(opt).from(element).save();
+        } catch (error) {
+          console.error('PDF generation failed:', error);
+          alert('PDF generation failed. Please try printing to PDF instead (Ctrl/Cmd + P).');
+        }
+
+        btn.classList.remove('exporting');
+        btn.innerHTML = '<i class="fas fa-file-pdf"></i>';
+      }
+
+      // Smooth scroll for navigation
+      document.querySelectorAll('.sidebar-nav a').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const target = document.querySelector(link.getAttribute('href'));
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      });
+
+      // Active navigation highlighting
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            document.querySelectorAll('.sidebar-nav a').forEach(link => {
+              link.classList.remove('active');
+              if (link.getAttribute('href') === '#' + id) {
+                link.classList.add('active');
+              }
+            });
+          }
+        });
+      }, { threshold: 0.3 });
+
+      document.querySelectorAll('.page[id]').forEach(page => {
+        observer.observe(page);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js", "*.html", "*.js", "assets/"],
+  "ext": "js,html,css,json",
+  "ignore": ["node_modules/", "generate-images.js"],
+  "delay": "500"
+}
