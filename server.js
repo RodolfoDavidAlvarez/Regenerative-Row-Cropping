@@ -100,7 +100,7 @@ app.use(express.static(__dirname));
 
 // Serve the main HTML file
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'regenerative-field-trial-proposal.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Health check endpoint
